@@ -4,10 +4,12 @@ A real-time Indian Sign Language recognition app that uses your webcam to detect
 
 ## Team Members
 
-Riya Kamat - Module 1 — AI & Data Collection 
-Sonali G - Module 2 — Backend Server & API 
-Tanushree H - Module 3 — Frontend Web Application 
-Ananya Jantli - Module 4 — Testing, Deployment & Documentation 
+| Name | Role |
+|------|------|
+| Riya Kamat | Module 1 — AI & Data Collection |
+| Sonali G | Module 2 — Backend Server & API |
+| Tanushree H | Module 3 — Frontend Web Application |
+| Ananya Jantli | Module 4 — Testing, Deployment & Documentation |
 
 ## Guide
 Prof. Lalita Ekalaspur
