@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ISL Sign Language Recognition</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <h1> ISL Sign Language Recognition</h1>
+        </div>
+        <nav>
+            <a href="index.html" class="nav-link active">Recognizer</a>
+            <a href="guide.html" class="nav-link">Gesture Guide</a>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Left Column: Webcam -->
+        <div class="webcam-container">
+            <div class="video-wrapper">
+                <video id="webcam" autoplay playsinline></video>
+                <canvas id="canvas" style="display: none;"></canvas>
+                <svg id="landmarks" class="landmarks-overlay"></svg>
+            </div>
+        </div>
+
+        <!-- Right Column: Controls & Display -->
+        <aside class="control-panel">
+            <div class="prediction-display">
+                <div class="prediction-label" id="prediction">--</div>
+                <div class="confidence-container">
+                    <div class="confidence-label">Confidence</div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" id="confidenceFill" style="width: 0%"></div>
+                    </div>
+                    <div class="confidence-percentage" id="confidencePercent">0%</div>
+                </div>
+            </div>
+
+            <div class="text-output-section">
+                <label for="textOutput">Recognized Text:</label>
+                <textarea id="textOutput" readonly placeholder="Gesture text will appear here..."></textarea>
+            </div>
+
+            <div class="button-group">
+                <button id="speakBtn" class="btn btn-primary">
+                    <span>🔊</span> Speak
+                </button>
+                <button id="clearBtn" class="btn btn-secondary">
+                    <span>🗑️</span> Clear
+                </button>
+            </div>
+
+            <div class="status-section">
+                <div class="status-label">Status:</div>
+                <div class="status-message" id="statusMessage">Initializing...</div>
+            </div>
+
+            <div class="info-box">
+                <p><strong>Tips:</strong></p>
+                <ul>
+                    <li>Show hand clearly to camera</li>
+                    <li>Good lighting improves accuracy</li>
+                    <li>Confidence should be >80%</li>
+                    <li>Same gesture 3x to add text</li>
+                </ul>
+            </div>
+        </aside>
+    </main>
+
+    <footer>
+        <p></p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
