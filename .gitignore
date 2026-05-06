@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+data/raw/
+data/Indian Sign Language Gesture Landmarks.csv
+models/isl_lstm_model.h5
+models/isl_lstm.h5
+models/isl_model.pkl
+models/best_checkpoint.h5
