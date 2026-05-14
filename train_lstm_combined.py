@@ -1,19 +1,4 @@
-"""
-train_lstm_combined.py
-======================
-ISL Real-Time Recognition — Model Training Module
-KLE Technological University | BCA Project 2025-26
 
-What this script does:
-  1. Loads sequences from webcam-collected data  (data/sequences/<label>/)
-  2. Loads sequences converted from CSV dataset  (data/sequences_csv/<id>/)
-  3. Trains a 2-layer LSTM classifier
-  4. Saves the model as  models/isl_lstm_combined.h5
-  5. Saves a full evaluation report:
-       - Accuracy / Loss curves  → models/training_curves.png
-       - Confusion matrix        → models/confusion_matrix.png
-       - Classification report   → models/classification_report.txt
-"""
 
 import os
 import numpy as np
