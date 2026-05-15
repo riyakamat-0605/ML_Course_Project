@@ -1,12 +1,12 @@
+import base64
+import json
+from collections import deque
+
 import cv2
 import mediapipe as mp
 import numpy as np
-import base64
 import tensorflow as tf
-import json
 from tensorflow.keras.layers import LSTM
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
 
 # ==========================================
 # FIX FOR KERAS VERSION COMPATIBILITY
@@ -16,67 +16,190 @@ class FixedLSTM(LSTM):
         kwargs.pop('time_major', None)
         super().__init__(*args, **kwargs)
 
-# Setup MediaPipe
-BaseOptions = mp.tasks.BaseOptions
-HandLandmarker = mp.tasks.vision.HandLandmarker
-HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
-VisionRunningMode = mp.tasks.vision.RunningMode
+tf.keras.utils.get_custom_objects()['LSTM'] = FixedLSTM
 
-# Load model and labels with FixedLSTM
-model = tf.keras.models.load_model(
-    'model/isl_lstm_combined.h5',
-    custom_objects={'LSTM': FixedLSTM}
+# ─────────────────────────────────────────────
+# CONFIG — must match training exactly
+# ─────────────────────────────────────────────
+SEQUENCE_LENGTH  = 30
+FEATURE_DIM      = 127    # 1 (two-hand flag) + 63 (left) + 63 (right zeros)
+CONF_THRESHOLD   = 0.6
+SMOOTHING_WINDOW = 10
+MIN_VOTES        = 5
+
+# ─────────────────────────────────────────────
+# LABEL MAP — matches labels.py and training
+# ─────────────────────────────────────────────
+LABEL_MAP = {
+    "0": "hello",
+    "1": "thanks",
+    "2": "yes",
+}
+
+# ─────────────────────────────────────────────
+# LOAD MODEL
+# ─────────────────────────────────────────────
+print("[predict.py] Loading LSTM model...")
+try:
+    model = tf.keras.models.load_model(
+        'model/isl_lstm_combined.h5',
+        custom_objects={'LSTM': FixedLSTM}
+    )
+    print("[predict.py] Model loaded successfully!")
+except Exception as e:
+    raise RuntimeError(
+        f"[predict.py] Could not load model.\n"
+        f"Make sure model/isl_lstm_combined.h5 exists.\n"
+        f"Error: {e}"
+    )
+
+# ─────────────────────────────────────────────
+# MEDIAPIPE SETUP
+# ─────────────────────────────────────────────
+_mp_hands = mp.solutions.hands
+_hands    = _mp_hands.Hands(
+    static_image_mode=True,
+    max_num_hands=1,
+    min_detection_confidence=0.5,
 )
-labels = json.load(open('model/labels.json'))
-print("Model loaded successfully!")
 
-def decode_image(base64_string):
-    """Convert base64 image string to OpenCV image"""
+# ─────────────────────────────────────────────
+# INTERNAL BUFFERS (persist between API calls)
+# ─────────────────────────────────────────────
+_sequence:    list  = []
+_pred_buffer: deque = deque(maxlen=SMOOTHING_WINDOW)
+
+# ─────────────────────────────────────────────
+# FUNCTION 1 — decode_image
+# Called by Sonali's app.py: img = decode_image(data['image'])
+# ─────────────────────────────────────────────
+def decode_image(base64_string: str):
+    """
+    Convert base64 image string to OpenCV image (numpy array).
+    Strips data URL prefix if present.
+    Returns numpy BGR image or None on failure.
+    """
     try:
+        # Strip data URL prefix if frontend sends it
+        if ',' in base64_string:
+            base64_string = base64_string.split(',')[1]
+
         img_bytes = base64.b64decode(base64_string)
         img_array = np.frombuffer(img_bytes, dtype=np.uint8)
         img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-        if img is None:
-            # Return dummy image if decode fails
-            return np.ones((480, 640, 3), dtype=np.uint8) * 128
-        return img
-    except:
-        # Return dummy image on any error
-        return np.ones((480, 640, 3), dtype=np.uint8) * 128
+        return img  # None if decode failed
+    except Exception as e:
+        print(f"[decode_image] Error: {e}")
+        return None
 
+
+# ─────────────────────────────────────────────
+# FUNCTION 2 — extract_landmarks_from_image)
+# Returns 127-feature vector or None if no hand detected
+# ─────────────────────────────────────────────
 def extract_landmarks_from_image(img):
-    """Detect hand and get 21 landmark points"""
+    """
+    Run MediaPipe on image and extract 127-feature vector.
+    Feature format: [two_hand_flag(1), primary_hand_xyz(63), zeros(63)]
+    Matches exactly what collect_sequence.py and feature_builder.py produce.
+    Returns numpy array (127,) or None if no hand detected.
+    """
     if img is None:
-        return np.random.rand(63)
-    try:
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
-        options = HandLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path='hand_landmarker.task'),
-            running_mode=VisionRunningMode.IMAGE,
-            num_hands=1
-        )
-        with HandLandmarker.create_from_options(options) as landmarker:
-            result = landmarker.detect(mp_image)
-        if not result.hand_landmarks:
-            return np.random.rand(63)
-        landmarks = []
-        for lm in result.hand_landmarks[0]:
-            landmarks.extend([lm.x, lm.y, lm.z])
-        return np.array(landmarks)
-    except:
-        return np.random.rand(63)
+        return None
 
-def predict_gesture(landmarks):
-    """Predict gesture from landmarks"""
     try:
-        sequence = landmarks.reshape(1, 1, -1)
-        prediction = model.predict(sequence, verbose=0)
-        class_index = int(np.argmax(prediction))
-        confidence = float(np.max(prediction))
-        label = labels[str(class_index)]
+        rgb    = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        result = _hands.process(rgb)
+
+        if not result.multi_hand_landmarks:
+            return None  # No hand detected — caller handles this
+
+        # Extract landmarks from first hand
+        hand_landmarks = result.multi_hand_landmarks[0]
+        data = []
+        for lm in hand_landmarks.landmark:
+            data.extend([lm.x, lm.y, lm.z])
+
+        uses_two_hands = 1 if len(result.multi_hand_landmarks) == 2 else 0
+
+        # Build 127-feature vector — same format as training
+        feature_vector = np.array(
+            [uses_two_hands] + data + [0.0] * 63,
+            dtype=np.float32
+        )
+        return feature_vector  # shape: (127,)
+
+    except Exception as e:
+        print(f"[extract_landmarks_from_image] Error: {e}")
+        return None
+
+
+# ─────────────────────────────────────────────
+# FUNCTION 3 — predict_gesture
+# Maintains internal 30-frame buffer across API calls
+# ─────────────────────────────────────────────
+def predict_gesture(landmarks):
+    """
+    Accumulate landmarks into a 30-frame buffer.
+    Run LSTM once buffer is full.
+    Returns (label, confidence) — label is None until buffer is full
+    and prediction is confident enough.
+
+    Args:
+        landmarks: numpy array (127,) from extract_landmarks_from_image
+
+    Returns:
+        (label: str or None, confidence: float)
+    """
+    global _sequence, _pred_buffer
+
+    if landmarks is None:
+        # No hand — drain stale frames
+        if _sequence:
+            _sequence.pop(0)
+        return None, 0.0
+
+    # Add to buffer
+    _sequence.append(landmarks)
+    if len(_sequence) > SEQUENCE_LENGTH:
+        _sequence.pop(0)
+
+    # Need full 30-frame sequence before predicting
+    if len(_sequence) < SEQUENCE_LENGTH:
+        return None, 0.0
+
+    # Run LSTM
+    input_data = np.array(_sequence, dtype=np.float32).reshape(
+        1, SEQUENCE_LENGTH, FEATURE_DIM
+    )
+
+    try:
+        probs      = model.predict(input_data, verbose=0)[0]
+        pred       = int(np.argmax(probs))
+        confidence = float(np.max(probs))
+    except Exception as e:
+        print(f"[predict_gesture] Model prediction error: {e}")
+        return None, 0.0
+
+    # Smoothing buffer
+    _pred_buffer.append(pred)
+    final_pred = max(set(_pred_buffer), key=_pred_buffer.count)
+    vote_count = _pred_buffer.count(final_pred)
+
+    # Only return label when confident AND stable
+    if vote_count > MIN_VOTES and confidence > CONF_THRESHOLD:
+        label = LABEL_MAP.get(str(final_pred), "Unknown")
         return label, round(confidence, 2)
-    except:
-        return "hello", 0.90
+
+    return None, round(confidence, 2)
+
+
+def reset_buffers():
+    """Clear sequence and prediction buffers. Call via /reset endpoint."""
+    global _sequence, _pred_buffer
+    _sequence    = []
+    _pred_buffer = deque(maxlen=SMOOTHING_WINDOW)
+    print("[predict.py] Buffers reset.")
+
 
 print("predict.py loaded successfully!")
