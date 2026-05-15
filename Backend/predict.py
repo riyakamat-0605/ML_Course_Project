@@ -1,3 +1,15 @@
+"""
+predict.py
+==========
+ISL Recognition — Prediction Module (Fixed)
+Riya Kamat | 01FE24BCA190
+
+Functions exported (matches Sonali's app.py exactly):
+    decode_image(base64_string)         → numpy image
+    extract_landmarks_from_image(img)   → numpy array (127,) or None
+    predict_gesture(landmarks)          → (label, confidence)
+"""
+
 import base64
 import json
 from collections import deque
@@ -58,9 +70,10 @@ except Exception as e:
 # ─────────────────────────────────────────────
 _mp_hands = mp.solutions.hands
 _hands    = _mp_hands.Hands(
-    static_image_mode=True,
+    static_image_mode=False,
     max_num_hands=1,
     min_detection_confidence=0.5,
+    min_tracking_confidence=0.5,
 )
 
 # ─────────────────────────────────────────────
@@ -94,7 +107,8 @@ def decode_image(base64_string: str):
 
 
 # ─────────────────────────────────────────────
-# FUNCTION 2 — extract_landmarks_from_image)
+# FUNCTION 2 — extract_landmarks_from_image
+# Called by Sonali's app.py: landmarks = extract_landmarks_from_image(img)
 # Returns 127-feature vector or None if no hand detected
 # ─────────────────────────────────────────────
 def extract_landmarks_from_image(img):
@@ -136,6 +150,7 @@ def extract_landmarks_from_image(img):
 
 # ─────────────────────────────────────────────
 # FUNCTION 3 — predict_gesture
+# Called by Sonali's app.py: label, confidence = predict_gesture(landmarks)
 # Maintains internal 30-frame buffer across API calls
 # ─────────────────────────────────────────────
 def predict_gesture(landmarks):

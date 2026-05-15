@@ -4,7 +4,7 @@
 
 // Configuration
 const CONFIG = {
-    API_BASE: 'http://10.11.1.133:5000',
+    API_BASE: 'http://127.0.0.1:5000',
     FRAME_INTERVAL: 500, // ms
     CONFIDENCE_THRESHOLD: 0.85,
     DEBOUNCE_COUNT: 3, // Same gesture 3x to confirm
